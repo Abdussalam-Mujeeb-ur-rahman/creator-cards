@@ -33,7 +33,7 @@ function Server(serverConfig = {}) {
       // Todo: replace with a more optimal JSON stringifier
       objectClone = JSON.parse(JSON.stringify(inputObject || {}));
     } catch (e) {}
-    const sanitizableFields = ['authorization', 'authorisation', 'password'];
+    const sanitizableFields = ['authorization', 'authorisation', 'password', 'access_code'];
     sanitizableFields.forEach((s) => {
       if (objectClone[s]) {
         objectClone[s] = '*****masked******';
@@ -42,10 +42,16 @@ function Server(serverConfig = {}) {
     return objectClone;
   }
 
+  function sanitizeURL(inputURL) {
+    if (!inputURL) return inputURL;
+
+    return inputURL.replace(/([?&]access_code=)[^&]*/gi, '$1*****masked******');
+  }
+
   function createRequestLog(request) {
     return {
-      requestURL: request.originalUrl,
-      _url: request.url,
+      requestURL: sanitizeURL(request.originalUrl),
+      _url: sanitizeURL(request.url),
       body: sanitizeInputObject(request.body),
       query: sanitizeInputObject(request.query),
       headers: process.env.SHOW_RAW_HEADERS
@@ -246,6 +252,7 @@ function Server(serverConfig = {}) {
         responseComponents.body.message = error.isApplicationError
           ? error.message
           : 'Some error occured.';
+        responseComponents.body.code = error.isApplicationError ? error.errorCode : undefined;
         responseComponents.body.errors = error.details || undefined;
         responseComponents.body.data = error.context;
 
@@ -274,14 +281,15 @@ function Server(serverConfig = {}) {
   }
 
   function startServer() {
-    app.use((_, res, __) => {
+    app.use((_, res) => {
       // Global 404 Catcher
       res.status(404).json({
         status: 'error',
         message: 'Resource not found.',
       });
     });
-    app.use((err, _, res, __) => {
+    // eslint-disable-next-line no-unused-vars
+    app.use((err, _, res, next) => {
       appLogger.errorX(err, 'global-500-error');
       // Global 500 Catcher
       res.status(500).json({
