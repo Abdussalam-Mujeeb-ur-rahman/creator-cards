@@ -42,6 +42,12 @@ const ERROR_STATUS_CODE_MAPPING = {
   NF02: 404,
   AC03: 403,
   AC04: 403,
+  ST01: 404,
+  ED01: 400,
+  ED02: 403,
+  TP01: 400,
+  EX01: 400,
+  EV01: 400,
 };
 
 module.exports = { ERROR_CODE, ERROR_STATUS_CODE_MAPPING };
