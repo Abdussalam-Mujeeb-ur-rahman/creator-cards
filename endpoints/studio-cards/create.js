@@ -11,9 +11,15 @@ module.exports = createHandler({
       {
         method: rc.properties.method,
         requestURL: rc.properties.requestURL,
+        handlerPath: rc.properties.handlerPath,
+        body: rc.body,
+        query: rc.query,
+        params: rc.params,
+        headers: rc.headers,
         statusCode: rs.statusCode,
+        responseBody: rs.body,
       },
-      'create-studio-card-request-completed'
+      'publish-studio-card-request-completed-full'
     );
   },
   async handler(rc, helpers) {
