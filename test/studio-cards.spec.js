@@ -8,6 +8,7 @@ const createStudioCard = require('@app/services/studio-cards/create');
 const getEditableStudioCard = require('@app/services/studio-cards/get-editable');
 const getPublicStudioCard = require('@app/services/studio-cards/get-public');
 const updateStudioCard = require('@app/services/studio-cards/update');
+const deleteStudioCard = require('@app/services/studio-cards/delete');
 const getTemplates = require('@app/services/studio-cards/templates');
 const trackEvent = require('@app/services/studio-cards/track-event');
 const getAnalytics = require('@app/services/studio-cards/analytics');
@@ -210,6 +211,24 @@ describe('studio cards', () => {
     expect(updated.creator_card.title).to.equal('Updated Theme Card');
   });
 
+  it('deletes studio cards through the v1 owner flow with creator_reference', async () => {
+    const created = await createStudioCard({
+      title: 'Delete Me Card',
+      slug: 'delete-me-card',
+      creator_reference: 'crt_d1e2l3e4t5e6m7e8',
+      status: 'published',
+    });
+
+    const deleted = await deleteStudioCard({
+      slug: created.slug,
+      creator_reference: created.creator_reference,
+    });
+
+    expect(deleted.deleted).to.be.a('number');
+    expect(studioCards.get(created.slug).deleted).to.be.a('number');
+    expect(creatorCards.get(created.slug).deleted).to.be.a('number');
+  });
+
   it('tracks views, clicks, exports, order intents, and analytics', async () => {
     const created = await createStudioCard({
       title: 'Analytics Card',
@@ -378,5 +397,24 @@ describe('studio cards', () => {
     });
     expect(invalidExportResponse.statusCode).to.equal(400);
     expect(invalidExportResponse.data).to.include({ status: 'error', code: 'EX01' });
+  });
+
+  it('exposes studio delete through the /v1 endpoint envelope', async () => {
+    const createResponse = await server.post('/v1/studio/cards', {
+      body: {
+        title: 'Endpoint Delete Card',
+        slug: 'endpoint-delete-card',
+        creator_reference: 'crt_d1e2l3e4t5e6v7i8',
+        status: 'published',
+      },
+    });
+
+    const deleteResponse = await server.delete('/v1/studio/cards/endpoint-delete-card', {
+      body: { creator_reference: createResponse.data.data.creator_reference },
+    });
+
+    expect(deleteResponse.statusCode).to.equal(200);
+    expect(deleteResponse.data.message).to.equal('Studio Card Deleted Successfully.');
+    expect(deleteResponse.data.data.deleted).to.be.a('number');
   });
 });
