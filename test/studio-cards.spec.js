@@ -2,11 +2,14 @@ const { expect } = require('chai');
 const createMockServer = require('@app-core/mock-server');
 const CreatorCardRepository = require('@app/repository/creator-card');
 const StudioCardRepository = require('@app/repository/studio-card');
+const StudioOwnerRepository = require('@app/repository/studio-owner');
 const CardEventRepository = require('@app/repository/card-event');
 const CardExportRepository = require('@app/repository/card-export');
 const createStudioCard = require('@app/services/studio-cards/create');
+const createOwnerSession = require('@app/services/studio-cards/create-owner-session');
 const getEditableStudioCard = require('@app/services/studio-cards/get-editable');
 const getPublicStudioCard = require('@app/services/studio-cards/get-public');
+const registerOwner = require('@app/services/studio-cards/register-owner');
 const updateStudioCard = require('@app/services/studio-cards/update');
 const deleteStudioCard = require('@app/services/studio-cards/delete');
 const getTemplates = require('@app/services/studio-cards/templates');
@@ -21,6 +24,7 @@ function matchesQuery(entry, query) {
 describe('studio cards', () => {
   const creatorCards = new Map();
   const studioCards = new Map();
+  const studioOwners = new Map();
   const cardEvents = [];
   const cardExports = [];
   let counter = 0;
@@ -29,6 +33,7 @@ describe('studio cards', () => {
   beforeEach(() => {
     creatorCards.clear();
     studioCards.clear();
+    studioOwners.clear();
     cardEvents.length = 0;
     cardExports.length = 0;
     counter = 0;
@@ -62,6 +67,9 @@ describe('studio cards', () => {
     StudioCardRepository.findOne = async ({ query }) =>
       Array.from(studioCards.values()).find((card) => matchesQuery(card, query)) || null;
 
+    StudioCardRepository.findMany = async ({ query }) =>
+      Array.from(studioCards.values()).filter((card) => matchesQuery(card, query));
+
     StudioCardRepository.create = async (data) => {
       const now = 1767052800000 + counter;
       const card = {
@@ -83,6 +91,24 @@ describe('studio cards', () => {
       Object.assign(card, updateValues, { updated: updateValues.updated || Date.now() });
 
       return { acknowledged: true, modifiedCount: 1 };
+    };
+
+    StudioOwnerRepository.findOne = async ({ query }) =>
+      Array.from(studioOwners.values()).find((owner) => matchesQuery(owner, query)) || null;
+
+    StudioOwnerRepository.create = async (data) => {
+      const now = 1767052800000 + counter;
+      const owner = {
+        _id: `01STUDIOOWNER${counter}`,
+        ...data,
+        created: now,
+        updated: now,
+      };
+
+      counter += 1;
+      studioOwners.set(owner.creator_reference, owner);
+
+      return owner;
     };
 
     CardEventRepository.create = async (data) => {
@@ -139,6 +165,34 @@ describe('studio cards', () => {
     });
     expect(created.theme.primary_color).to.equal('#123456');
     expect(created.layout.links_style).to.equal('grid');
+  });
+
+  it('registers an owner and creates a reusable owner session with cards', async () => {
+    const owner = await registerOwner({
+      creator_reference: 'crt_s1e2s3s4i5o6n7o8',
+      editor_code: 'owner_code_01',
+    });
+
+    expect(owner.cards).to.have.length(0);
+
+    const created = await createStudioCard({
+      title: 'Owner Session Card',
+      slug: 'owner-session-card',
+      creator_reference: owner.creator_reference,
+      status: 'published',
+    });
+
+    expect(created.editor_code).to.equal('owner_code_01');
+
+    const session = await createOwnerSession({
+      creator_reference: owner.creator_reference,
+      editor_code: 'owner_code_01',
+    });
+
+    expect(session.creator_reference).to.equal(owner.creator_reference);
+    expect(session.cards).to.have.length(1);
+    expect(session.cards[0].slug).to.equal('owner-session-card');
+    expect(session.cards[0].editor_code).to.equal('owner_code_01');
   });
 
   it('protects editable routes and omits editor_code from public routes', async () => {
@@ -337,6 +391,38 @@ describe('studio cards', () => {
       total_exports: 1,
       total_orders: 1,
     });
+  });
+
+  it('exposes owner register and session endpoints through /v1', async () => {
+    const registerResponse = await server.post('/v1/studio/auth/register', {
+      body: {
+        creator_reference: 'crt_l1o2g3i4n5f6l7w8',
+        editor_code: 'owner-login-01',
+      },
+    });
+
+    expect(registerResponse.statusCode).to.equal(200);
+    expect(registerResponse.data.data.cards).to.have.length(0);
+
+    await server.post('/v1/studio/cards', {
+      body: {
+        title: 'Login Flow Card',
+        slug: 'login-flow-card',
+        creator_reference: 'crt_l1o2g3i4n5f6l7w8',
+        status: 'published',
+      },
+    });
+
+    const sessionResponse = await server.post('/v1/studio/auth/session', {
+      body: {
+        creator_reference: 'crt_l1o2g3i4n5f6l7w8',
+        editor_code: 'owner-login-01',
+      },
+    });
+
+    expect(sessionResponse.statusCode).to.equal(200);
+    expect(sessionResponse.data.data.cards).to.have.length(1);
+    expect(sessionResponse.data.data.cards[0].slug).to.equal('login-flow-card');
   });
 
   it('returns expected errors for invalid studio templates and owner access', async () => {

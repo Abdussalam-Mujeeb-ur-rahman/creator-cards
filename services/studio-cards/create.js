@@ -1,5 +1,6 @@
 const validator = require('@app-core/validator');
 const StudioCardRepository = require('@app/repository/studio-card');
+const StudioOwnerRepository = require('@app/repository/studio-owner');
 const createCreatorCard = require('@app/services/creator-cards/create');
 const {
   createEditorCode,
@@ -58,11 +59,15 @@ async function createStudioCard(serviceData) {
     access_code: data.access_code,
   });
 
+  const owner = await StudioOwnerRepository.findOne({
+    query: { creator_reference: creatorCard.creator_reference, deleted: null },
+  });
+
   const studioCard = await StudioCardRepository.create({
     creator_card_id: creatorCard.id,
     slug: creatorCard.slug,
     creator_reference: creatorCard.creator_reference,
-    editor_code: createEditorCode(),
+    editor_code: owner?.editor_code || createEditorCode(),
     template_key: templateKey,
     theme: mergeTheme(data.theme, templateKey),
     layout: mergeLayout(data.layout, templateKey),
