@@ -9,6 +9,7 @@ const createStudioCard = require('@app/services/studio-cards/create');
 const createOwnerSession = require('@app/services/studio-cards/create-owner-session');
 const getEditableStudioCard = require('@app/services/studio-cards/get-editable');
 const getPublicStudioCard = require('@app/services/studio-cards/get-public');
+const listOwnerCards = require('@app/services/studio-cards/list-owner-cards');
 const registerOwner = require('@app/services/studio-cards/register-owner');
 const updateStudioCard = require('@app/services/studio-cards/update');
 const deleteStudioCard = require('@app/services/studio-cards/delete');
@@ -193,6 +194,37 @@ describe('studio cards', () => {
     expect(session.cards).to.have.length(1);
     expect(session.cards[0].slug).to.equal('owner-session-card');
     expect(session.cards[0].editor_code).to.equal('owner_code_01');
+  });
+
+  it('lists published owner cards with creator reference and editor code', async () => {
+    const owner = await registerOwner({
+      creator_reference: 'crt_p1u2b3l4i5s6h7d8',
+      editor_code: 'owner_cards_01',
+    });
+
+    await createStudioCard({
+      title: 'Published Owner Card',
+      slug: 'published-owner-card',
+      creator_reference: owner.creator_reference,
+      status: 'published',
+    });
+
+    await createStudioCard({
+      title: 'Draft Owner Card',
+      slug: 'draft-owner-card',
+      creator_reference: owner.creator_reference,
+      status: 'draft',
+    });
+
+    const publishedCards = await listOwnerCards({
+      creator_reference: owner.creator_reference,
+      editor_code: owner.editor_code,
+      status: 'published',
+    });
+
+    expect(publishedCards).to.have.length(1);
+    expect(publishedCards[0].slug).to.equal('published-owner-card');
+    expect(publishedCards[0].creator_card.status).to.equal('published');
   });
 
   it('protects editable routes and omits editor_code from public routes', async () => {
@@ -423,6 +455,85 @@ describe('studio cards', () => {
     expect(sessionResponse.statusCode).to.equal(200);
     expect(sessionResponse.data.data.cards).to.have.length(1);
     expect(sessionResponse.data.data.cards[0].slug).to.equal('login-flow-card');
+  });
+
+  it('exposes owner cards listing through /v1 and filters published cards', async () => {
+    await server.post('/v1/studio/auth/register', {
+      body: {
+        creator_reference: 'crt_o1w2n3e4r5l6i7s8',
+        editor_code: 'owner-list-01',
+      },
+    });
+
+    await server.post('/v1/studio/cards', {
+      body: {
+        title: 'Published Home Card',
+        slug: 'published-home-card',
+        creator_reference: 'crt_o1w2n3e4r5l6i7s8',
+        status: 'published',
+      },
+    });
+
+    await server.post('/v1/studio/cards', {
+      body: {
+        title: 'Draft Home Card',
+        slug: 'draft-home-card',
+        creator_reference: 'crt_o1w2n3e4r5l6i7s8',
+        status: 'draft',
+      },
+    });
+
+    const listResponse = await server.post('/v1/studio/cards/owner-list', {
+      body: {
+        creator_reference: 'crt_o1w2n3e4r5l6i7s8',
+        editor_code: 'owner-list-01',
+        status: 'published',
+      },
+    });
+
+    expect(listResponse.statusCode).to.equal(200);
+    expect(listResponse.data.data).to.have.length(1);
+    expect(listResponse.data.data[0].slug).to.equal('published-home-card');
+  });
+
+  it('rejects owner cards listing with the wrong editor code', async () => {
+    await server.post('/v1/studio/auth/register', {
+      body: {
+        creator_reference: 'crt_w1r2o3n4g5e6d7c8',
+        editor_code: 'owner-list-02',
+      },
+    });
+
+    const listResponse = await server.post('/v1/studio/cards/owner-list', {
+      body: {
+        creator_reference: 'crt_w1r2o3n4g5e6d7c8',
+        editor_code: 'WRONGCODE',
+        status: 'published',
+      },
+    });
+
+    expect(listResponse.statusCode).to.equal(400);
+    expect(listResponse.data).to.include({ status: 'error', code: 'OW02' });
+  });
+
+  it('returns an empty list when the owner has no published cards', async () => {
+    await server.post('/v1/studio/auth/register', {
+      body: {
+        creator_reference: 'crt_e1m2p3t4y5l6i7s8',
+        editor_code: 'owner-list-03',
+      },
+    });
+
+    const listResponse = await server.post('/v1/studio/cards/owner-list', {
+      body: {
+        creator_reference: 'crt_e1m2p3t4y5l6i7s8',
+        editor_code: 'owner-list-03',
+        status: 'published',
+      },
+    });
+
+    expect(listResponse.statusCode).to.equal(200);
+    expect(listResponse.data.data).to.deep.equal([]);
   });
 
   it('returns expected errors for invalid studio templates and owner access', async () => {

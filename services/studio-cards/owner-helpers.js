@@ -16,8 +16,14 @@ const ownerCredentialsSpec = `root {
   creator_reference string<trim|length:20>
   editor_code string<trim|lengthbetween:6,32>
 }`;
+const ownerCardListSpec = `root {
+  creator_reference string<trim|length:20>
+  editor_code string<trim|lengthbetween:6,32>
+  status? string
+}`;
 
 const parsedOwnerCredentialsSpec = validator.parse(ownerCredentialsSpec);
+const parsedOwnerCardListSpec = validator.parse(ownerCardListSpec);
 
 function throwOwnerError(message, code) {
   throwAppError(message, code);
@@ -62,6 +68,20 @@ async function listOwnerCards(creatorReference) {
   return cards.filter(Boolean);
 }
 
+function validateOwnerCardListRequest(serviceData) {
+  const data = validator.validate(serviceData, parsedOwnerCardListSpec);
+
+  if (!/^[A-Za-z0-9_-]+$/.test(data.editor_code)) {
+    throwOwnerError('editor_code must be 6-32 characters using letters, numbers, underscores, or hyphens', 'SPCL_VALIDATION');
+  }
+
+  if (data.status && !['draft', 'published'].includes(data.status)) {
+    throwOwnerError('status must be either draft or published', 'SPCL_VALIDATION');
+  }
+
+  return data;
+}
+
 function serializeOwnerSession(owner, cards = []) {
   return {
     creator_reference: owner.creator_reference,
@@ -78,5 +98,6 @@ module.exports = {
   listOwnerCards,
   serializeOwnerSession,
   throwOwnerError,
+  validateOwnerCardListRequest,
   validateOwnerCredentials,
 };
